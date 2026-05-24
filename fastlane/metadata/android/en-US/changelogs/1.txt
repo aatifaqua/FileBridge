@@ -1,0 +1,11 @@
+Initial release.
+
+• FTP and FTPS server with self-signed certificate
+• Anonymous and single-user authentication
+• Custom root directory with read-only mode
+• Persistent foreground service with Stop notification
+• Auto-start on boot and on app launch
+• Real-time activity log
+• Home-screen widget
+• Material You theming
+• Three-step onboarding flow

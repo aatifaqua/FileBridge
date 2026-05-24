@@ -1,0 +1,25 @@
+FileBridge turns your Android device into a Wi-Fi FTP and FTPS file server. Any computer or device on the same Wi-Fi network can connect using a standard FTP client — no cables, no cloud account, no data leaving your home network.
+
+FEATURES
+
+• FTP and FTPS — choose unencrypted FTP for speed or FTPS (explicit TLS) for encrypted transfers. A self-signed certificate is generated automatically.
+• Anonymous or single-user authentication — lock the server behind a username and password, or open it to anyone on the network.
+• Custom root directory — point the server at any folder, including SD card storage.
+• Read-only mode — let other devices browse and download but not upload or delete.
+• Persistent foreground service — the server keeps running even with the screen off, and a notification gives you a one-tap Stop button.
+• Auto-start on boot — start the server automatically after the device reboots.
+• Activity log — see who connected, what files were transferred, and any failed login attempts in real time.
+• Home-screen widget — toggle the server without opening the app.
+• Material You design — follows your system color scheme, supports light and dark themes.
+
+PRIVACY
+
+FileBridge contains no analytics, no crash reporting, and makes no network requests except the FTP server it creates on your local network. All settings are stored locally on your device.
+
+COMPATIBILITY
+
+Works with any FTP client: FileZilla, WinSCP, CyberDuck, Windows Explorer (map network drive), macOS Finder (Connect to Server), Total Commander, Solid Explorer, and many more.
+
+OPEN SOURCE
+
+FileBridge is free and open source (Apache 2.0). Source code and issue tracker on GitHub.
