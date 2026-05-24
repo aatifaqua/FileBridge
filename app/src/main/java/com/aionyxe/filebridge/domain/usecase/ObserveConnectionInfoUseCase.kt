@@ -13,6 +13,10 @@ import javax.inject.Inject
 
 /**
  * Emits connection details while the server is running, or null when it is not.
+ *
+ * All three upstream flows (server state, app settings, and the password) are included in the
+ * [combine] so that a password change while the server is running immediately re-emits a fresh
+ * [ConnectionInfo] — no stale password is displayed or encoded in the QR code.
  */
 class ObserveConnectionInfoUseCase @Inject constructor(
     private val controller: FtpServerController,
@@ -20,14 +24,18 @@ class ObserveConnectionInfoUseCase @Inject constructor(
     private val credentialsRepository: CredentialsRepository,
 ) {
     operator fun invoke(): Flow<ConnectionInfo?> =
-        combine(controller.state, settingsRepository.settings) { state, settings ->
+        combine(
+            controller.state,
+            settingsRepository.settings,
+            credentialsRepository.passwordFlow,
+        ) { state, settings, password ->
             val running = state as? ServerState.Running ?: return@combine null
             val scheme = if (running.protocol == Protocol.FTPS) "ftps" else "ftp"
             val anonymous = settings.authMode == AuthMode.ANONYMOUS
             ConnectionInfo(
                 url = "$scheme://${running.address}:${running.port}",
                 username = if (anonymous) null else settings.username,
-                password = if (anonymous) null else credentialsRepository.getPassword(),
+                password = if (anonymous) null else password,
                 protocol = running.protocol,
             )
         }

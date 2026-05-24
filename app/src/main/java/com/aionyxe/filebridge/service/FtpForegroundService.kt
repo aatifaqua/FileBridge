@@ -17,7 +17,9 @@ import com.aionyxe.filebridge.domain.usecase.StopServerUseCase
 import com.aionyxe.filebridge.service.notification.NotificationFactory
 import com.aionyxe.filebridge.service.notification.NotificationFactory.Companion.NOTIF_ID
 import com.aionyxe.filebridge.widget.FtpServerWidget
+import com.aionyxe.filebridge.di.ApplicationScope
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -44,6 +46,7 @@ class FtpForegroundService : LifecycleService() {
     @Inject lateinit var observeServerStateUseCase: ObserveServerStateUseCase
     @Inject lateinit var observeConnectionInfoUseCase: ObserveConnectionInfoUseCase
     @Inject lateinit var notificationFactory: NotificationFactory
+    @Inject @ApplicationScope lateinit var appScope: CoroutineScope
 
     private val notificationManager by lazy {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -99,8 +102,10 @@ class FtpForegroundService : LifecycleService() {
 
     override fun onDestroy() {
         // If the system kills the service (e.g. low memory) make sure the engine stops too.
+        // Use appScope (not lifecycleScope) so the stop call is not cancelled when the
+        // lifecycle moves to DESTROYED immediately after super.onDestroy().
         if (!stopInitiated) {
-            lifecycleScope.launch { stopServerUseCase() }
+            appScope.launch { stopServerUseCase() }
         }
         super.onDestroy()
     }
@@ -133,8 +138,10 @@ class FtpForegroundService : LifecycleService() {
         stopInitiated = true
         lifecycleScope.launch {
             stopServerUseCase()
-            // Wait until the controller confirms it is fully stopped before removing the FGS.
-            observeServerStateUseCase().first { it is ServerState.Stopped }
+            // Wait until the controller confirms it is fully stopped (or errored) before
+            // removing the FGS. Waiting only for Stopped would hang indefinitely if the
+            // server transitions to Error instead.
+            observeServerStateUseCase().first { it is ServerState.Stopped || it is ServerState.Error }
             @Suppress("DEPRECATION")
             stopForeground(true) // removes notification; compat with API < 33
             stopSelf()

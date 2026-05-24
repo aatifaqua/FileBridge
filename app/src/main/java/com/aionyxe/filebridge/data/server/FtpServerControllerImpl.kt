@@ -75,9 +75,12 @@ class FtpServerControllerImpl @Inject constructor(
     // ---- FtpServerController ----
 
     override suspend fun start(config: ServerConfig): Unit = withContext(ioDispatcher) {
+        // Atomically check-and-set to Starting inside the lock so that two concurrent
+        // start() calls cannot both pass the guard before either writes Starting.
         synchronized(serverLock) {
             val current = _state.value
             if (current is ServerState.Running || current is ServerState.Starting) return@withContext
+            _state.value = ServerState.Starting
         }
 
         val wifiIp = networkInfoProvider.currentWifiIpAddress()
@@ -85,8 +88,6 @@ class FtpServerControllerImpl @Inject constructor(
                 _state.value = ServerState.Error(context.getString(R.string.error_no_wifi))
                 return@withContext
             }
-
-        _state.value = ServerState.Starting
 
         try {
             // Pre-load password so AppUserManager can do sync comparison.
@@ -153,7 +154,7 @@ class FtpServerControllerImpl @Inject constructor(
             // Acquire partial wake lock to keep CPU alive during transfers.
             val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
-                acquire(/* no timeout — released in stop() */ 0L)
+                acquire() // no timeout — held indefinitely until released in stop()
             }
 
             // Collect bus events → LogRepository.

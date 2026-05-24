@@ -2,6 +2,7 @@ package com.aionyxe.filebridge.data.server
 
 import com.aionyxe.filebridge.domain.server.ServerEvent
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import org.apache.ftpserver.ftplet.DefaultFtplet
 import org.apache.ftpserver.ftplet.FtpRequest
 import org.apache.ftpserver.ftplet.FtpSession
@@ -21,14 +22,14 @@ internal class EventBridgeFtplet(
         val ip = session.clientAddress.address.hostAddress ?: "unknown"
         // Store IP so AppUserManager can attach it to AuthFailure events.
         SessionContext.currentIp.set(ip)
-        connectedClientCount.value++
+        connectedClientCount.update { it + 1 }
         eventBus.tryEmit(ServerEvent.ClientConnected(ip))
         return FtpletResult.DEFAULT
     }
 
     override fun onDisconnect(session: FtpSession): FtpletResult {
         val ip = session.clientAddress.address.hostAddress ?: "unknown"
-        connectedClientCount.value = maxOf(0, connectedClientCount.value - 1)
+        connectedClientCount.update { maxOf(0, it - 1) }
         SessionContext.currentIp.remove()
         eventBus.tryEmit(ServerEvent.ClientDisconnected(ip))
         return FtpletResult.DEFAULT

@@ -46,9 +46,13 @@ internal class AppUserManager(
             }
 
             authentication is UsernamePasswordAuthentication -> {
+                // resolvedPassword == null means credentials were not available at server-start
+                // time; always reject rather than falling back to empty-string comparison which
+                // would accept any client that sends an empty password.
                 val ok = config.authMode == AuthMode.SINGLE_USER &&
+                    resolvedPassword != null &&
                     constantTimeEquals(authentication.username, config.username) &&
-                    constantTimeEquals(authentication.password, resolvedPassword ?: "")
+                    constantTimeEquals(authentication.password, resolvedPassword)
                 if (ok) {
                     buildUser(name = authentication.username)
                 } else {
