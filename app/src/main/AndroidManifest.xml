@@ -53,6 +53,15 @@
             android:foregroundServiceType="dataSync" />
 
         <!--
+            Receives notification action buttons (Stop). Not exported — only the app's own
+            PendingIntents target it. Using a receiver (rather than a getService PendingIntent)
+            makes the Stop button reliable from the background notification shade.
+        -->
+        <receiver
+            android:name=".service.ServerActionReceiver"
+            android:exported="false" />
+
+        <!--
             Boot receiver — starts the server on device boot when "Auto-start on boot" is enabled.
             exported="true" is required for system-delivered boot broadcasts.
             directBootAware="false" means the receiver fires after the user has unlocked the device

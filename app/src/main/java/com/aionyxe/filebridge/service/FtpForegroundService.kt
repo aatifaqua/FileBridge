@@ -10,7 +10,9 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.aionyxe.filebridge.R
 import com.aionyxe.filebridge.domain.model.ServerState
+import com.aionyxe.filebridge.domain.server.ServerEvent
 import com.aionyxe.filebridge.domain.usecase.ObserveConnectionInfoUseCase
+import com.aionyxe.filebridge.domain.usecase.ObserveServerEventsUseCase
 import com.aionyxe.filebridge.domain.usecase.ObserveServerStateUseCase
 import com.aionyxe.filebridge.domain.usecase.StartServerUseCase
 import com.aionyxe.filebridge.domain.usecase.StopServerUseCase
@@ -45,6 +47,7 @@ class FtpForegroundService : LifecycleService() {
     @Inject lateinit var stopServerUseCase: StopServerUseCase
     @Inject lateinit var observeServerStateUseCase: ObserveServerStateUseCase
     @Inject lateinit var observeConnectionInfoUseCase: ObserveConnectionInfoUseCase
+    @Inject lateinit var observeServerEventsUseCase: ObserveServerEventsUseCase
     @Inject lateinit var notificationFactory: NotificationFactory
     @Inject @ApplicationScope lateinit var appScope: CoroutineScope
 
@@ -52,39 +55,70 @@ class FtpForegroundService : LifecycleService() {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-    /** Set to true once we have initiated a stop so the state observer skips re-posting. */
+    /**
+     * Set once the server has reached [ServerState.Running] in this service instance. Guards the
+     * teardown-on-[ServerState.Stopped] path so the service does not stop itself on the initial
+     * Stopped value observed before the server has even started.
+     */
     @Volatile
-    private var stopInitiated = false
+    private var everRunning = false
+
+    /** Running count of completed file transfers (uploads + downloads) since service start. */
+    private var filesTransferred = 0
 
     override fun onCreate() {
         super.onCreate()
         // Observe state and keep the notification in sync for the whole service lifetime.
         lifecycleScope.launch {
             observeServerStateUseCase().collect { state ->
-                if (stopInitiated) return@collect
                 when (state) {
                     is ServerState.Running -> {
+                        everRunning = true
                         val info = observeConnectionInfoUseCase().first()
                         notificationManager.notify(NOTIF_ID, notificationFactory.running(info))
                         updateWidget(isRunning = true, address = info?.url ?: "${state.address}:${state.port}")
                     }
 
                     is ServerState.Error -> {
-                        // Post dismissible error notification; do not call stopSelf here
-                        // — the user may retry. The FGS notification stays until the user
-                        // dismisses or the service is explicitly stopped.
-                        notificationManager.notify(NOTIF_ID, notificationFactory.error(state.message))
+                        // The engine is not running in an Error state (e.g. start failed, or Wi-Fi
+                        // dropped). Surface why, then tear the service down. Error never appears as
+                        // the initial state, so this is always safe.
                         updateWidget(isRunning = false, address = "")
+                        finishWithErrorNotification(state.message)
                     }
 
                     is ServerState.Stopped -> {
                         updateWidget(isRunning = false, address = "")
+                        // Whoever stopped the engine (Stop button, UI, or system), the foreground
+                        // service has no reason to stay alive. Guarded by everRunning so the
+                        // initial Stopped value at startup does not kill the service prematurely.
+                        if (everRunning) finishCleanly()
                     }
 
                     else -> {
                         /* Starting / Stopping: keep the existing notification. */
                     }
                 }
+            }
+        }
+
+        // Update the notification on every completed file transfer so large batches show live
+        // progress. This also keeps the foreground service visibly active for the whole batch.
+        lifecycleScope.launch {
+            observeServerEventsUseCase().collect { event ->
+                val lastPath = when (event) {
+                    is ServerEvent.FileUploaded -> event.path
+                    is ServerEvent.FileDownloaded -> event.path
+                    else -> return@collect // ignore connect/disconnect/auth events here
+                }
+                // Only reflect progress while the server is actually running.
+                if (observeServerStateUseCase().value !is ServerState.Running) return@collect
+                filesTransferred++
+                val info = observeConnectionInfoUseCase().first()
+                notificationManager.notify(
+                    NOTIF_ID,
+                    notificationFactory.transferring(info, filesTransferred, lastPath),
+                )
             }
         }
     }
@@ -101,19 +135,18 @@ class FtpForegroundService : LifecycleService() {
     }
 
     override fun onDestroy() {
-        // If the system kills the service (e.g. low memory) make sure the engine stops too.
-        // Use appScope (not lifecycleScope) so the stop call is not cancelled when the
-        // lifecycle moves to DESTROYED immediately after super.onDestroy().
-        if (!stopInitiated) {
-            appScope.launch { stopServerUseCase() }
-        }
+        // If the system kills the service (e.g. low memory, swipe from recents) make sure the
+        // engine stops too. Use appScope (not lifecycleScope) so the stop call is not cancelled
+        // when the lifecycle moves to DESTROYED immediately after super.onDestroy(). If the engine
+        // is already stopped this is a no-op (stop() short-circuits).
+        appScope.launch { stopServerUseCase() }
         super.onDestroy()
     }
 
     // ---- Intent handlers ----
 
     private fun handleStart() {
-        stopInitiated = false
+        filesTransferred = 0
 
         // Call startForeground immediately to satisfy the FGS contract (5 s window on Android 14+).
         ServiceCompat.startForeground(
@@ -125,27 +158,39 @@ class FtpForegroundService : LifecycleService() {
 
         lifecycleScope.launch {
             startServerUseCase().onFailure { error ->
-                // Surface error in notification; do not crash the service.
-                notificationManager.notify(
-                    NOTIF_ID,
-                    notificationFactory.error(error.message ?: getString(R.string.error_unknown)),
-                )
+                // Validation failures never reach the controller, so no ServerState.Error is
+                // emitted for them — surface the error and tear down here. (Runtime start failures
+                // do set Error and are also handled by the state observer; the teardown is
+                // idempotent.)
+                finishWithErrorNotification(error.message ?: getString(R.string.error_unknown))
             }
         }
     }
 
     private fun handleStop() {
-        stopInitiated = true
-        lifecycleScope.launch {
-            stopServerUseCase()
-            // Wait until the controller confirms it is fully stopped (or errored) before
-            // removing the FGS. Waiting only for Stopped would hang indefinitely if the
-            // server transitions to Error instead.
-            observeServerStateUseCase().first { it is ServerState.Stopped || it is ServerState.Error }
-            @Suppress("DEPRECATION")
-            stopForeground(true) // removes notification; compat with API < 33
-            stopSelf()
-        }
+        // Trigger the engine stop; the state observer reacts to the resulting Stopped/Error
+        // transition and tears the foreground service down. Use appScope so the stop completes
+        // even if the service lifecycle is torn down first.
+        appScope.launch { stopServerUseCase() }
+    }
+
+    // ---- Teardown helpers ----
+
+    /** Removes the foreground notification and stops the service. */
+    private fun finishCleanly() {
+        @Suppress("DEPRECATION")
+        stopForeground(true) // removes notification; compat with API < 33
+        stopSelf()
+    }
+
+    /**
+     * Posts a dismissible error notification, detaches it from the foreground service (so it stays
+     * visible after the service stops), and stops the service.
+     */
+    private fun finishWithErrorNotification(message: String) {
+        notificationManager.notify(NOTIF_ID, notificationFactory.error(message))
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
+        stopSelf()
     }
 
     // ---- Widget sync ----

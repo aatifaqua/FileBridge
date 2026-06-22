@@ -154,6 +154,10 @@ dependencies {
     implementation(libs.bouncycastle.pkix)
     implementation(libs.zxing.core)
 
+    // Debug-only: route Apache FtpServer/MINA's SLF4J logging to Logcat so the FTP protocol
+    // exchange and any internal exceptions are visible while diagnosing connection issues.
+    debugImplementation("org.slf4j:slf4j-android:1.7.36")
+
     // Glance widget
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)

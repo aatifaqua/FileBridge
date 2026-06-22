@@ -21,7 +21,7 @@ data class AppSettings(
     val onboardingComplete: Boolean = false,
 ) {
     companion object {
-        const val DEFAULT_FTP_PORT = 2121
+        const val DEFAULT_FTP_PORT = 2221
         const val DEFAULT_PASV_MIN_PORT = 50000
         const val DEFAULT_PASV_MAX_PORT = 51000
         const val DEFAULT_USERNAME = "ftpuser"

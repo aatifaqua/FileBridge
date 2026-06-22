@@ -56,12 +56,7 @@ class NotificationFactory @Inject constructor(
      * The notification is ongoing and non-dismissible.
      */
     fun running(info: ConnectionInfo?): Notification {
-        val stopIntent = Intent(context, com.aionyxe.filebridge.service.FtpForegroundService::class.java)
-            .setAction(com.aionyxe.filebridge.service.FtpForegroundService.ACTION_STOP)
-        val stopPi = PendingIntent.getService(
-            context, REQUEST_STOP, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        val stopPi = stopPendingIntent()
 
         val body = info?.url ?: ""
 
@@ -69,6 +64,36 @@ class NotificationFactory @Inject constructor(
             .setContentTitle(context.getString(R.string.notif_title_running))
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setOngoing(true)
+            .addAction(0, context.getString(R.string.notif_action_stop), stopPi)
+            .build()
+    }
+
+    /**
+     * Shown while files are actively being transferred. Identical to [running] but with a live
+     * count of completed transfers and the most recent file path, so the user sees progress and
+     * the foreground service stays visibly active during large batches.
+     */
+    fun transferring(info: ConnectionInfo?, filesTransferred: Int, lastPath: String): Notification {
+        val stopPi = stopPendingIntent()
+        val summary = context.getString(R.string.notif_transfer_summary, filesTransferred)
+        val body = buildString {
+            append(summary)
+            if (lastPath.isNotBlank()) {
+                append('\n')
+                append(lastPath)
+            }
+            info?.url?.takeIf { it.isNotBlank() }?.let {
+                append('\n')
+                append(it)
+            }
+        }
+
+        return baseBuilder()
+            .setContentTitle(context.getString(R.string.notif_title_running))
+            .setContentText(summary)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setOnlyAlertOnce(true)
             .setOngoing(true)
             .addAction(0, context.getString(R.string.notif_action_stop), stopPi)
             .build()
@@ -84,6 +109,17 @@ class NotificationFactory @Inject constructor(
             .build()
 
     // ---- Private helpers ----
+
+    private fun stopPendingIntent(): PendingIntent {
+        // Broadcast (not getService): notification taps run in the background where starting a
+        // service is unreliable. ServerActionReceiver stops the engine in-process instead.
+        val stopIntent = Intent(context, com.aionyxe.filebridge.service.ServerActionReceiver::class.java)
+            .setAction(com.aionyxe.filebridge.service.ServerActionReceiver.ACTION_STOP)
+        return PendingIntent.getBroadcast(
+            context, REQUEST_STOP, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
 
     private fun baseBuilder(): NotificationCompat.Builder {
         val contentIntent = Intent(context, MainActivity::class.java).apply {

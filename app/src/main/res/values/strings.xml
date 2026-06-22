@@ -9,6 +9,7 @@
     <string name="error_password_blank">Password cannot be empty.</string>
     <string name="error_root_dir_unresolved">The selected folder could not be opened. Choose a different one.</string>
     <string name="error_no_wifi">No Wi-Fi connection available.</string>
+    <string name="error_wifi_lost">Wi-Fi disconnected. Server stopped.</string>
     <string name="error_server_start_failed">Failed to start server.</string>
     <string name="error_unknown">Unknown error.</string>
 
@@ -21,6 +22,7 @@
     <string name="notif_title_running">FTP server running</string>
     <string name="notif_title_error">Server error</string>
     <string name="notif_action_stop">Stop</string>
+    <string name="notif_transfer_summary">%1$d files transferred</string>
 
     <!-- Bottom navigation labels -->
     <string name="nav_home">Home</string>
