@@ -129,55 +129,47 @@ private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
 @Composable
 private fun LogRow(entry: LogEntry, modifier: Modifier = Modifier) {
-    val dotColor = entry.type.accentColor()
+    val accent = entry.type.accentColor()
+    val isError = entry.type == LogType.TRANSFER_FAILED || entry.type == LogType.AUTH_FAILURE
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 9.dp),
     ) {
-        // Colored dot
+        // Semantic colored dot — the at-a-glance category indicator.
         Surface(
             modifier = Modifier
-                .padding(top = 5.dp)
-                .size(10.dp),
+                .padding(top = 4.dp)
+                .size(8.dp),
             shape = CircleShape,
-            color = dotColor,
+            color = accent,
             content = {},
         )
         Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row {
-                Text(
-                    text = timeFormat.format(Date(entry.timestamp)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontFamily = FontFamily.Monospace,
-                )
-                entry.ip?.let { ip ->
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = ip,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                }
-            }
-            Text(
-                text = entry.message,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            text = timeFormat.format(Date(entry.timestamp)),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(top = 1.dp),
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = entry.message,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
 @Composable
 private fun LogType.accentColor(): Color = when (this) {
-    LogType.CLIENT_CONNECTED, LogType.SERVER_STARTED -> MaterialTheme.colorScheme.tertiary
-    LogType.CLIENT_DISCONNECTED, LogType.SERVER_STOPPED -> MaterialTheme.colorScheme.outline
-    LogType.FILE_UPLOADED, LogType.FILE_DOWNLOADED -> MaterialTheme.colorScheme.primary
-    LogType.AUTH_FAILURE -> MaterialTheme.colorScheme.error
+    LogType.SERVER_STARTED, LogType.CLIENT_CONNECTED -> MaterialTheme.colorScheme.tertiary
+    LogType.SERVER_STOPPED, LogType.CLIENT_DISCONNECTED -> MaterialTheme.colorScheme.outline
+    LogType.FILE_UPLOADED -> MaterialTheme.colorScheme.primary
+    LogType.FILE_DOWNLOADED -> MaterialTheme.colorScheme.secondary
+    LogType.TRANSFER_FAILED, LogType.AUTH_FAILURE -> MaterialTheme.colorScheme.error
 }

@@ -3,11 +3,14 @@ package com.aionyxe.filebridge.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aionyxe.filebridge.domain.model.AuthMode
+import com.aionyxe.filebridge.domain.model.ConnectionInfo
 import com.aionyxe.filebridge.domain.model.ServerState
+import com.aionyxe.filebridge.domain.model.ServerStats
 import com.aionyxe.filebridge.domain.usecase.GetAppSettingsUseCase
 import com.aionyxe.filebridge.domain.usecase.ObserveConnectedClientsUseCase
 import com.aionyxe.filebridge.domain.usecase.ObserveConnectionInfoUseCase
 import com.aionyxe.filebridge.domain.usecase.ObserveServerStateUseCase
+import com.aionyxe.filebridge.domain.usecase.ObserveServerStatsUseCase
 import com.aionyxe.filebridge.domain.usecase.StartServerViaServiceUseCase
 import com.aionyxe.filebridge.domain.usecase.StopServerViaServiceUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,6 +26,7 @@ class HomeViewModel @Inject constructor(
     observeServerStateUseCase: ObserveServerStateUseCase,
     observeConnectionInfoUseCase: ObserveConnectionInfoUseCase,
     observeConnectedClientsUseCase: ObserveConnectedClientsUseCase,
+    observeServerStatsUseCase: ObserveServerStatsUseCase,
     getAppSettingsUseCase: GetAppSettingsUseCase,
     private val startServerViaServiceUseCase: StartServerViaServiceUseCase,
     private val stopServerViaServiceUseCase: StopServerViaServiceUseCase,
@@ -31,22 +35,31 @@ class HomeViewModel @Inject constructor(
     private val _isPasswordRevealed = MutableStateFlow(false)
     private val _transientError = MutableStateFlow<String?>(null)
 
+    private data class Snapshot(
+        val state: ServerState,
+        val info: ConnectionInfo?,
+        val clients: Int,
+        val stats: ServerStats,
+    )
+
     val uiState = combine(
         combine(
             observeServerStateUseCase(),
             observeConnectionInfoUseCase(),
             observeConnectedClientsUseCase(),
-        ) { state, info, clients -> Triple(state, info, clients) },
+            observeServerStatsUseCase(),
+        ) { state, info, clients, stats -> Snapshot(state, info, clients, stats) },
         combine(
             getAppSettingsUseCase(),
             _isPasswordRevealed,
             _transientError,
         ) { settings, revealed, error -> Triple(settings, revealed, error) },
-    ) { (state, info, clients), (settings, revealed, error) ->
+    ) { snap, (settings, revealed, error) ->
         HomeUiState(
-            serverState = state,
-            connectionInfo = info,
-            connectedClients = clients,
+            serverState = snap.state,
+            connectionInfo = snap.info,
+            connectedClients = snap.clients,
+            stats = snap.stats,
             isAnonymous = settings.authMode == AuthMode.ANONYMOUS,
             isPasswordRevealed = revealed,
             transientError = error,

@@ -3,8 +3,6 @@ package com.aionyxe.filebridge.data.server
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.PowerManager
-import android.util.Log
-import com.aionyxe.filebridge.BuildConfig
 import com.aionyxe.filebridge.data.logs.LogEntry
 import com.aionyxe.filebridge.data.logs.LogRepository
 import com.aionyxe.filebridge.data.logs.LogType
@@ -15,6 +13,7 @@ import com.aionyxe.filebridge.domain.model.AuthMode
 import com.aionyxe.filebridge.domain.model.Protocol
 import com.aionyxe.filebridge.domain.model.ServerConfig
 import com.aionyxe.filebridge.domain.model.ServerState
+import com.aionyxe.filebridge.domain.model.ServerStats
 import com.aionyxe.filebridge.domain.network.ConnectivityStatus
 import com.aionyxe.filebridge.domain.network.NetworkInfoProvider
 import com.aionyxe.filebridge.domain.server.CertificateManager
@@ -30,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.apache.ftpserver.ConnectionConfigFactory
@@ -37,6 +37,7 @@ import org.apache.ftpserver.DataConnectionConfigurationFactory
 import org.apache.ftpserver.FtpServerFactory
 import org.apache.ftpserver.listener.ListenerFactory
 import org.apache.ftpserver.ssl.SslConfigurationFactory
+import com.aionyxe.filebridge.util.formatBytes
 import java.util.LinkedHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -68,6 +69,9 @@ class FtpServerControllerImpl @Inject constructor(
 
     private val _connectedClientCount = MutableStateFlow(0)
     override val connectedClientCount: StateFlow<Int> = _connectedClientCount.asStateFlow()
+
+    private val _stats = MutableStateFlow(ServerStats())
+    override val stats: StateFlow<ServerStats> = _stats.asStateFlow()
 
     private val serverLock = Any()
 
@@ -126,6 +130,7 @@ class FtpServerControllerImpl @Inject constructor(
             )
 
             _connectedClientCount.value = 0
+            _stats.value = ServerStats()
             val ftplet = EventBridgeFtplet(eventBus, _connectedClientCount)
 
             val dataConnConfig = DataConnectionConfigurationFactory().apply {
@@ -161,13 +166,6 @@ class FtpServerControllerImpl @Inject constructor(
             // Enable it explicitly when the app is in anonymous mode; keep it disabled otherwise so
             // anonymous probes (e.g. Windows Explorer) are correctly refused.
             val anonymousEnabled = config.authMode == AuthMode.ANONYMOUS
-            if (BuildConfig.DEBUG) {
-                Log.i(
-                    "FtpTrace",
-                    "Server start: authMode=${config.authMode} anonymousEnabled=$anonymousEnabled " +
-                        "accessMode=${config.accessMode} port=${config.port}",
-                )
-            }
             val connectionConfig = ConnectionConfigFactory().apply {
                 isAnonymousLoginEnabled = anonymousEnabled
                 // Disable the concurrent-login caps. Apache FtpServer leaks its in-memory
@@ -216,6 +214,7 @@ class FtpServerControllerImpl @Inject constructor(
             // Collect bus events → LogRepository.
             eventCollectorJob = appScope.launch(ioDispatcher) {
                 eventBus.events.collect { event ->
+                    updateStats(event)
                     logRepository.append(event.toLogEntry(context))
                 }
             }
@@ -262,7 +261,6 @@ class FtpServerControllerImpl @Inject constructor(
                         R.string.log_server_started,
                         wifiIp,
                         config.port.toString(),
-                        config.protocol.name,
                     ),
                 ),
             )
@@ -320,6 +318,24 @@ class FtpServerControllerImpl @Inject constructor(
     }
 
     // ---- Helpers ----
+
+    /** Folds a transfer event into the running [stats] counters. */
+    private fun updateStats(event: ServerEvent) {
+        _stats.update { s ->
+            when (event) {
+                is ServerEvent.FileUploaded ->
+                    s.copy(filesTransferred = s.filesTransferred + 1, bytesTransferred = s.bytesTransferred + event.size)
+
+                is ServerEvent.FileDownloaded ->
+                    s.copy(filesTransferred = s.filesTransferred + 1, bytesTransferred = s.bytesTransferred + event.size)
+
+                is ServerEvent.TransferFailed ->
+                    s.copy(failedTransfers = s.failedTransfers + 1)
+
+                else -> s
+            }
+        }
+    }
 
     /**
      * Tears down the Apache engine, cancels all observer jobs, and releases the locks. Idempotent
@@ -390,18 +406,34 @@ private fun ServerEvent.toLogEntry(context: Context): LogEntry {
     val now = System.currentTimeMillis()
     return when (this) {
         is ServerEvent.ClientConnected ->
-            LogEntry(now, LogType.CLIENT_CONNECTED, context.getString(R.string.log_client_connected), ip)
+            LogEntry(now, LogType.CLIENT_CONNECTED, context.getString(R.string.log_client_connected, ip), ip)
 
-        is ServerEvent.ClientDisconnected ->
-            LogEntry(now, LogType.CLIENT_DISCONNECTED, context.getString(R.string.log_client_disconnected), ip)
+        is ServerEvent.ClientDisconnected -> {
+            val message = if (filesTransferred == 0 && failedCount == 0) {
+                context.getString(R.string.log_client_disconnected, ip)
+            } else {
+                val parts = mutableListOf(
+                    context.getString(R.string.log_summary_files, filesTransferred),
+                    formatBytes(totalBytes),
+                )
+                if (failedCount > 0) parts.add(context.getString(R.string.log_summary_failed, failedCount))
+                context.getString(R.string.log_client_disconnected_summary, ip, parts.joinToString(" · "))
+            }
+            LogEntry(now, LogType.CLIENT_DISCONNECTED, message, ip)
+        }
 
         is ServerEvent.FileUploaded ->
-            LogEntry(now, LogType.FILE_UPLOADED, context.getString(R.string.log_file_uploaded, path), ip)
+            LogEntry(now, LogType.FILE_UPLOADED, context.getString(R.string.log_file_uploaded, ip, path, formatBytes(size)), ip)
 
         is ServerEvent.FileDownloaded ->
-            LogEntry(now, LogType.FILE_DOWNLOADED, context.getString(R.string.log_file_downloaded, path), ip)
+            LogEntry(now, LogType.FILE_DOWNLOADED, context.getString(R.string.log_file_downloaded, ip, path, formatBytes(size)), ip)
+
+        is ServerEvent.TransferFailed -> {
+            val res = if (upload) R.string.log_upload_failed else R.string.log_download_failed
+            LogEntry(now, LogType.TRANSFER_FAILED, context.getString(res, ip, path), ip)
+        }
 
         is ServerEvent.AuthFailure ->
-            LogEntry(now, LogType.AUTH_FAILURE, context.getString(R.string.log_auth_failure, username), ip)
+            LogEntry(now, LogType.AUTH_FAILURE, context.getString(R.string.log_auth_failure, ip, username), ip)
     }
 }

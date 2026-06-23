@@ -13,6 +13,7 @@ import org.apache.ftpserver.ftplet.UserManager
 import org.apache.ftpserver.usermanager.AnonymousAuthentication
 import org.apache.ftpserver.usermanager.UsernamePasswordAuthentication
 import org.apache.ftpserver.usermanager.impl.BaseUser
+import org.apache.ftpserver.usermanager.impl.ConcurrentLoginPermission
 import org.apache.ftpserver.usermanager.impl.WritePermission
 import java.security.MessageDigest
 
@@ -100,6 +101,12 @@ internal class AppUserManager(
         if (config.accessMode == AccessMode.READ_WRITE) {
             authorities.add(WritePermission())
         }
+        // Required for login to succeed at all: on every login Apache issues a
+        // ConcurrentLoginRequest, and BaseUser.authorize() returns null (-> "421 Maximum login
+        // limit has been reached") unless some authority can handle it. (0, 0) = unlimited
+        // concurrent logins / per-IP, which suits a personal server and clients like Windows
+        // Explorer that open many parallel connections.
+        authorities.add(ConcurrentLoginPermission(0, 0))
         return BaseUser().apply {
             this.name = name
             homeDirectory = config.rootDir.absolutePath

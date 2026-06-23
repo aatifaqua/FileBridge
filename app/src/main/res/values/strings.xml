@@ -34,6 +34,10 @@
     <string name="home_status_stopped_subtitle">Tap Start to begin sharing files</string>
     <string name="home_status_running_title">Server is running</string>
     <string name="home_status_running_subtitle">%1$d connected</string>
+    <string name="home_stat_clients">Clients</string>
+    <string name="home_stat_files">Files</string>
+    <string name="home_stat_data">Data</string>
+    <string name="home_stat_failed">Failed</string>
     <string name="home_start_server">Start server</string>
     <string name="home_stop_server">Stop server</string>
     <string name="home_address_copied">Address copied</string>
@@ -125,14 +129,20 @@
     <!-- Storage -->
     <string name="storage_label_internal">Internal storage</string>
 
-    <!-- Activity log messages (shown in the Logs screen) -->
-    <string name="log_server_started">Server started on %1$s:%2$s (%3$s)</string>
+    <!-- Activity log messages (shown in the Logs screen). Minimal "<subject> <action>" style;
+         client events lead with the client IP. -->
+    <string name="log_server_started">Server started · %1$s:%2$s</string>
     <string name="log_server_stopped">Server stopped</string>
-    <string name="log_client_connected">Client connected</string>
-    <string name="log_client_disconnected">Client disconnected</string>
-    <string name="log_file_uploaded">Uploaded: %1$s</string>
-    <string name="log_file_downloaded">Downloaded: %1$s</string>
-    <string name="log_auth_failure">Auth failure for user \'%1$s\'</string>
+    <string name="log_client_connected">%1$s connected</string>
+    <string name="log_client_disconnected">%1$s disconnected</string>
+    <string name="log_client_disconnected_summary">%1$s disconnected · %2$s</string>
+    <string name="log_summary_files">%1$d files</string>
+    <string name="log_summary_failed">%1$d failed</string>
+    <string name="log_file_uploaded">%1$s uploaded %2$s · %3$s</string>
+    <string name="log_file_downloaded">%1$s downloaded %2$s · %3$s</string>
+    <string name="log_upload_failed">%1$s upload failed · %2$s</string>
+    <string name="log_download_failed">%1$s download failed · %2$s</string>
+    <string name="log_auth_failure">%1$s login failed (%2$s)</string>
 
     <!-- Settings — storage -->
     <string name="settings_root_dir">Root directory</string>

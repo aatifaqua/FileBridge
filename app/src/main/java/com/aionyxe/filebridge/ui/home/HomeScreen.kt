@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,10 +28,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DataUsage
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.QrCode2
+import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Wifi
@@ -75,6 +80,7 @@ import com.aionyxe.filebridge.domain.model.ServerState
 import com.aionyxe.filebridge.ui.components.QrCodeImage
 import com.aionyxe.filebridge.ui.components.StatusCard
 import com.aionyxe.filebridge.ui.components.WarningBanner
+import com.aionyxe.filebridge.util.formatBytes
 import kotlinx.coroutines.launch
 
 @Composable
@@ -265,6 +271,8 @@ private fun ServerOnContent(
             ),
         )
 
+        StatsCard(uiState = uiState)
+
         if (uiState.isAnonymous) {
             WarningBanner(message = stringResource(R.string.home_anonymous_warning))
         }
@@ -412,6 +420,84 @@ private fun ServerOnContent(
         }
 
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+// ---- Live stats dashboard ----
+
+@Composable
+private fun StatsCard(uiState: HomeUiState, modifier: Modifier = Modifier) {
+    val stats = uiState.stats
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp, horizontal = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            StatItem(
+                icon = Icons.Outlined.Group,
+                value = uiState.connectedClients.toString(),
+                label = stringResource(R.string.home_stat_clients),
+            )
+            StatItem(
+                icon = Icons.Outlined.SwapVert,
+                value = stats.filesTransferred.toString(),
+                label = stringResource(R.string.home_stat_files),
+            )
+            StatItem(
+                icon = Icons.Outlined.DataUsage,
+                value = formatBytes(stats.bytesTransferred),
+                label = stringResource(R.string.home_stat_data),
+            )
+            StatItem(
+                icon = Icons.Outlined.ErrorOutline,
+                value = stats.failedTransfers.toString(),
+                label = stringResource(R.string.home_stat_failed),
+                highlight = stats.failedTransfers > 0,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RowScope.StatItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    value: String,
+    label: String,
+    highlight: Boolean = false,
+) {
+    val accent = if (highlight) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+    Column(
+        modifier = Modifier.weight(1f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (highlight) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
 
